@@ -1,0 +1,16 @@
+# OS
+.DS_Store
+.idear
+
+# Environment
+.env.deploy
+logs/*
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+
+# CDK
+deploy/cdk.out/
+deploy/cdk.context.json

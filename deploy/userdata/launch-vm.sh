@@ -1,0 +1,67 @@
+#!/bin/bash
+set -euo pipefail
+TENANT_ID="${1:?Usage: launch-vm.sh <tenant_id> <vm_num> [vcpu] [mem_mb]}"
+VM_NUM="${2:?Usage: launch-vm.sh <tenant_id> <vm_num> [vcpu] [mem_mb]}"
+VCPU="${3:-2}"
+MEM_MB="${4:-4096}"
+SOCK="/tmp/fc-${TENANT_ID}.sock"
+TAP="tap-vm${VM_NUM}"
+GUEST_IP="{{SUBNET_PREFIX}}.${VM_NUM}.2"
+HOST_TAP_IP="{{SUBNET_PREFIX}}.${VM_NUM}.1"
+GUEST_MAC="AA:FC:00:00:00:$(printf '%02x' ${VM_NUM})"
+
+# Cleanup previous instance
+pkill -f "api-sock ${SOCK}" 2>/dev/null || true
+sudo ip link del ${TAP} 2>/dev/null || true
+rm -f ${SOCK}; sleep 0.5
+
+# Prepare disks
+cp ~/firecracker-assets/openclaw-rootfs.ext4 /tmp/${TENANT_ID}-rootfs.ext4
+DATA_VOL="$HOME/firecracker-assets/${TENANT_ID}-data.ext4"
+if [ ! -f "${DATA_VOL}" ]; then
+  dd if=/dev/zero of=${DATA_VOL} bs=1M count={{DATA_DISK_MB}} status=none
+  mkfs.ext4 -q ${DATA_VOL}
+fi
+
+# Network setup
+sudo ip tuntap add dev ${TAP} mode tap
+sudo ip addr add ${HOST_TAP_IP}/24 dev ${TAP}
+sudo ip link set dev ${TAP} up
+HOST_IFACE=$(ip route show default | awk '{print $5}' | head -1)
+sudo sysctl -q -w net.ipv4.ip_forward=1
+sudo iptables -t nat -C POSTROUTING -o ${HOST_IFACE} -j MASQUERADE 2>/dev/null || \
+  sudo iptables -t nat -A POSTROUTING -o ${HOST_IFACE} -j MASQUERADE
+sudo iptables -C FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || \
+  sudo iptables -A FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+sudo iptables -C FORWARD -i ${TAP} -o ${HOST_IFACE} -j ACCEPT 2>/dev/null || \
+  sudo iptables -A FORWARD -i ${TAP} -o ${HOST_IFACE} -j ACCEPT
+
+# Start Firecracker
+nohup firecracker --api-sock ${SOCK} --log-path /tmp/fc-${TENANT_ID}.log --level Info &>/dev/null & disown
+sleep 1
+
+# Configure VM
+curl -s --unix-socket ${SOCK} -X PUT http://localhost/boot-source \
+  -H 'Content-Type: application/json' \
+  -d '{"kernel_image_path":"'$HOME'/firecracker-assets/vmlinux","boot_args":"console=ttyS0 reboot=k panic=1 pci=off ip='${GUEST_IP}'::'${HOST_TAP_IP}':255.255.255.0::eth0:off"}'
+
+curl -s --unix-socket ${SOCK} -X PUT http://localhost/drives/rootfs \
+  -H 'Content-Type: application/json' \
+  -d '{"drive_id":"rootfs","path_on_host":"/tmp/'${TENANT_ID}'-rootfs.ext4","is_root_device":true,"is_read_only":false}'
+
+curl -s --unix-socket ${SOCK} -X PUT http://localhost/drives/data \
+  -H 'Content-Type: application/json' \
+  -d '{"drive_id":"data","path_on_host":"'${DATA_VOL}'","is_root_device":false,"is_read_only":false}'
+
+curl -s --unix-socket ${SOCK} -X PUT http://localhost/machine-config \
+  -H 'Content-Type: application/json' \
+  -d '{"vcpu_count":'${VCPU}',"mem_size_mib":'${MEM_MB}'}'
+
+curl -s --unix-socket ${SOCK} -X PUT http://localhost/network-interfaces/eth0 \
+  -H 'Content-Type: application/json' \
+  -d '{"iface_id":"eth0","guest_mac":"'${GUEST_MAC}'","host_dev_name":"'${TAP}'"}'
+
+RESULT=$(curl -s --unix-socket ${SOCK} -X PUT http://localhost/actions \
+  -H 'Content-Type: application/json' -d '{"action_type":"InstanceStart"}')
+[ -n "${RESULT}" ] && echo "ERROR: ${RESULT}" && exit 1
+echo "✓ tenant '${TENANT_ID}' started: vm${VM_NUM} ${VCPU}vCPU/${MEM_MB}MB IP:${GUEST_IP}"

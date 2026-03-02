@@ -1,0 +1,38 @@
+# OpenClaw 部署配置
+# stack.py / Lambda / UserData 共用
+
+# ========== 宿主机 (EC2) ==========
+host:
+  instance_type: m8i.xlarge        # 需支持 NestedVirtualization (c8i/m8i/r8i)
+  root_volume_gb: 20               # 系统卷: OS + tools + Firecracker
+  data_volume_gb: 100              # 数据卷: rootfs 模板 + VM 数据盘, 挂载到 /data
+  reserved_vcpu: 1                 # 预留给宿主机的 vCPU
+  reserved_mem_mb: 2048            # 预留给宿主机的内存 (MB)
+
+# ========== Auto Scaling ==========
+asg:
+  min_capacity: 1
+  max_capacity: 5
+  lifecycle_hook_timeout: 600      # 初始化超时 (秒), 超时后 ABANDON
+  use_spot: false                  # 使用 Spot 实例 (约省 60-70%, 但可能被回收)
+
+# ========== microVM 默认配置 ==========
+vm:
+  default_vcpu: 2
+  default_mem_mb: 4096
+  data_disk_mb: 4096               # 每个 VM 的数据盘大小 (MB)
+  gateway_port_base: 18789         # 第 N 个 VM 的宿主机端口 = base + N - 1
+  subnet_prefix: "172.16"          # VM 网段: 172.16.{N}.2
+
+# ========== S3 ==========
+s3:
+  rootfs_prefix: "rootfs"          # rootfs 镜像路径前缀
+  rootfs_filename: "openclaw-rootfs-latest.ext4"
+  backup_prefix: "backups"         # 数据卷备份路径前缀
+  backup_retention_days: 7
+
+# ========== 健康检查 ==========
+health_check:
+  interval_minutes: 1
+  max_failures: 3                  # 连续失败次数后自动重启
+  app_port: 18789                  # OpenClaw Gateway 端口 (VM 内)
