@@ -23,7 +23,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ENV_FILE="$SCRIPT_DIR/.env.deploy"
 if [ -f "$ENV_FILE" ]; then
   source "$ENV_FILE"
-  TABLE="${TenantsTable:-openclaw-tenants}"
+  TABLE="${TENANTS_TABLE:-openclaw-tenants}"
 else
   echo "⚠️  未找到 .env.deploy，请先运行 ./deploy.sh 或手动指定环境变量"
   TABLE="openclaw-tenants"

@@ -411,6 +411,10 @@ def _now():
 def _resp(code, body):
     return {
         "statusCode": code,
-        "headers": {"Content-Type": "application/json"},
+        "headers": {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "Content-Type,x-api-key",
+        },
         "body": json.dumps(body, default=str),
     }

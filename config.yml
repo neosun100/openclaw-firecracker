@@ -3,7 +3,7 @@
 
 # ========== 宿主机 (EC2) ==========
 host:
-  instance_type: m8i.xlarge        # 需支持 NestedVirtualization (c8i/m8i/r8i)
+  instance_type: c8i.2xlarge        # 需支持 NestedVirtualization (c8i/m8i/r8i)
   root_volume_gb: 20               # 系统卷: OS + tools + Firecracker
   data_volume_gb: 100              # 数据卷: rootfs 模板 + VM 数据盘, 挂载到 /data
   reserved_vcpu: 1                 # 预留给宿主机的 vCPU

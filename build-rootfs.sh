@@ -14,7 +14,7 @@ else
 fi
 
 VERSION="${1:-v1.0}"
-BUCKET="${AssetsBucket}"
+BUCKET="${ASSETS_BUCKET}"
 ROOTFS_IMG="/tmp/openclaw-rootfs-${VERSION}.ext4"
 ROOTFS_DIR="/tmp/openclaw-rootfs-build"
 
@@ -60,17 +60,14 @@ echo "PermitRootLogin yes" >> /etc/ssh/sshd_config
 curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
 apt-get install -y -qq nodejs
 
-cat > /etc/systemd/network/eth0.network << 'NET'
-[Match]
-Name=eth0
-[Network]
-Address=172.16.0.2/24
-Gateway=172.16.0.1
-DNS=8.8.8.8 8.8.4.4
-NET
 systemctl enable systemd-networkd systemd-resolved
 
-echo -e "nameserver 8.8.8.8\nnameserver 8.8.4.4" > /etc/resolv.conf
+mkdir -p /etc/systemd/resolved.conf.d
+cat > /etc/systemd/resolved.conf.d/dns.conf << 'DNSCONF'
+[Resolve]
+DNS=8.8.8.8 8.8.4.4
+FallbackDNS=1.1.1.1
+DNSCONF
 echo "openclaw-vm" > /etc/hostname
 echo "127.0.0.1 localhost openclaw-vm" > /etc/hosts
 echo "root:openclaw" | chpasswd

@@ -93,6 +93,11 @@ class OpenClawOrchestratorStack(cdk.Stack):
         api = apigw.RestApi(self, "Api",
             rest_api_name="openclaw-orchestrator",
             deploy_options=apigw.StageOptions(stage_name="v1"),
+            default_cors_preflight_options=apigw.CorsOptions(
+                allow_origins=apigw.Cors.ALL_ORIGINS,
+                allow_methods=apigw.Cors.ALL_METHODS,
+                allow_headers=["Content-Type", "x-api-key"],
+            ),
         )
 
         # API Key + Usage Plan
@@ -180,8 +185,11 @@ class OpenClawOrchestratorStack(cdk.Stack):
         )
 
         # Compute allocatable resources from instance type
-        _type_specs = {"m8i.xlarge": (4, 16384), "c8i.xlarge": (4, 8192), "r8i.xlarge": (4, 32768)}
-        _vcpu_total, _mem_total = _type_specs.get(CFG["host"]["instance_type"], (4, 16384))
+        _itype = CFG["host"]["instance_type"]
+        _sizes = {"medium":1,"large":2,"xlarge":4,"2xlarge":8,"4xlarge":16,"8xlarge":32,"12xlarge":48,"16xlarge":64,"24xlarge":96}
+        _mem_ratio = {"c":2048,"m":4096,"r":8192}
+        _vcpu_total = _sizes[_itype.split(".")[1]]
+        _mem_total = _vcpu_total * _mem_ratio[_itype.split(".")[0][0]]
         _avail_vcpu = _vcpu_total - CFG["host"]["reserved_vcpu"]
         _avail_mem = _mem_total - CFG["host"]["reserved_mem_mb"]
 
@@ -337,10 +345,12 @@ class OpenClawOrchestratorStack(cdk.Stack):
         )
 
         # ========== Outputs ==========
-        cdk.CfnOutput(self, "ApiUrl", value=api.url)
-        cdk.CfnOutput(self, "ApiKeyId", value=api_key.key_id)
-        cdk.CfnOutput(self, "TenantsTable", value=tenants_table.table_name)
-        cdk.CfnOutput(self, "HostsTable", value=hosts_table.table_name)
-        cdk.CfnOutput(self, "AssetsBucket", value=assets_bucket.bucket_name)
-        cdk.CfnOutput(self, "HostInstanceProfileArn",
-            value=instance_profile.attr_arn)
+        for key, val in {
+            "ApiUrl": api.url,
+            "ApiKeyId": api_key.key_id,
+            "TenantsTable": tenants_table.table_name,
+            "HostsTable": hosts_table.table_name,
+            "AssetsBucket": assets_bucket.bucket_name,
+            "HostInstanceProfileArn": instance_profile.attr_arn,
+        }.items():
+            cdk.CfnOutput(self, key, value=val)
